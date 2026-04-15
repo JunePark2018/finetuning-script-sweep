@@ -105,6 +105,7 @@ python inference.py --image test.jpg --model pest-lora-<RUN_NAME>
 ├── train.py                 # 데이터 준비 + 전처리 + 학습 + 저장 + 평가 (올인원)
 ├── evaluate.py              # 학습 후 평가 split으로 성능 측정
 ├── inference.py             # 학습된 모델로 추론
+├── upload_best.py           # Sweep 종료 후 최고 성능 모델만 Hub 업로드
 ├── setup.sh                 # GPU 서버 초기 설정
 ├── requirements.txt         # 의존성
 └── data/                    # 데이터셋 (첫 실행 시 HF Hub에서 자동 다운로드)
@@ -226,15 +227,29 @@ W&B 대시보드 → `pest-detection-full-sweep` 프로젝트:
 - **Importance** 뷰: 어느 파라미터가 성능에 가장 영향 주는지
 - **우승 run 확인**: sort by `eval/macro_f1` desc → 상위 조합의 LR/r/dropout 값 기록
 
-**4. 우승자로 정식 학습 + Hub 업로드**
+**4. Sweep 우승자 Hub 업로드 (재학습 불필요)**
+
+Sweep의 각 run은 이미 full 3 epoch 학습 + 평가를 완료한 상태. 재학습 없이 **가장 성능 좋은 모델만 골라서 업로드**:
+
 ```bash
-# Sweep 결과에서 best 파라미터 복사
-LEARNING_RATE=<best_lr> LORA_R=<best_r> LORA_DROPOUT=<best_dropout> \
-  HF_TOKEN=hf_xxx WANDB_API_KEY=... python train.py
-# WANDB_SWEEP_ID 없으므로 Hub 업로드도 정상 수행
+HF_TOKEN=hf_xxx python upload_best.py
 ```
 
-필요하면 `NUM_EPOCHS=5`로 늘려서 더 학습시켜 보기.
+`upload_best.py`가 자동 수행:
+- 로컬의 모든 `pest-lora-*/` 디렉토리 스캔
+- 각 `evaluation_results.json`에서 `f1_macro` 읽음
+- 가장 높은 모델을 `{HF_ORG}/pest-{RUN_NAME}` 레포에 업로드
+
+업로드 전 랭킹만 확인:
+```bash
+python upload_best.py --dry-run --top-k 10
+```
+
+필요하면 `NUM_EPOCHS=5`로 늘려서 우승 파라미터 조합을 더 학습시켜 볼 수도 있음 (선택):
+```bash
+LEARNING_RATE=<best_lr> LORA_R=<best_r> LORA_DROPOUT=<best_dropout> \
+  NUM_EPOCHS=5 HF_TOKEN=hf_xxx python train.py
+```
 
 ### 주의사항
 
