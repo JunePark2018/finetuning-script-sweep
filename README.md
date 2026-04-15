@@ -6,34 +6,53 @@
 
 ## 시작하기 전에 — 환경변수 설정
 
-RunPod 대시보드 → Pod 설정 → **Environment Variables**에 아래 값을 입력하세요.
+코드 수정 없이 환경변수만으로 모든 설정을 오버라이드할 수 있습니다.
+RunPod 대시보드 → Pod 설정 → **Environment Variables**에 입력하거나, 로컬에서는 `export` / 실행 시 앞에 붙이세요 (`HF_TOKEN=hf_xxx python train.py`).
 
-| 환경변수 | 필수 | 값 | 설명 |
+### ① 인증·알림 (외부 서비스 연결)
+
+| 환경변수 | 필수 | 기본값 | 적용 스크립트 | 설명 |
+|---|---|---|---|---|
+| `HF_TOKEN` | **필수** | — | train.py, upload_best.py | HF Hub 데이터셋(gated) 다운로드 + LoRA 업로드. [발급](https://huggingface.co/settings/tokens) |
+| `HF_ORG` | 선택 | `Himedia-AI-01` | train.py, upload_best.py | Hub 업로드 대상 org. 빈 문자열(`HF_ORG=""`)이면 토큰 소유자 개인 계정에 업로드 |
+| `WANDB_API_KEY` | 선택 | — | train.py | W&B 실험 추적. 미설정 시 W&B 없이 학습. [발급](https://wandb.ai/authorize) |
+| `WANDB_PROJECT` | 선택 | `pest-detection-full` | train.py | W&B project 이름. `setdefault`라 이미 set돼 있으면 그대로 사용 (sweep 시 `pest-detection-full-sweep` 등으로 덮어씀) |
+| `DISCORD_WEBHOOK_URL` | 선택 | — | train.py, evaluate.py | 디스코드 Embed 알림. 미설정 시 조용히 진행. ⚠️ sweep 중엔 20 run × 9단계 = 180개 알림 폭탄이라 unset 권장 |
+
+### ② 학습 하이퍼파라미터 (train.py 전용)
+
+Sweep에서 agent가 주입하는 세 값(`LEARNING_RATE`, `LORA_R`, `LORA_ALPHA`)은 표시해뒀어요. Sweep 밖 단일 학습에서는 전부 수동 오버라이드 가능.
+
+| 환경변수 | 기본값 | Sweep 주입 | 설명 |
 |---|---|---|---|
-| `HF_TOKEN` | **필수** | `hf_xxx...` | 데이터셋(gated) 다운로드 + Hub 업로드. [발급](https://huggingface.co/settings/tokens) |
-| `HF_ORG` | 선택 | `Himedia-AI-01` (기본) | Hub 업로드 대상 org. 빈 문자열(`HF_ORG=""`)이면 토큰 소유자의 개인 계정에 업로드 |
-| `WANDB_API_KEY` | 선택 | `xxx...` | W&B 실험 추적. 미설정 시 W&B 없이 학습. [발급](https://wandb.ai/authorize) |
-| `DISCORD_WEBHOOK_URL` | 선택 | `https://discord.com/api/webhooks/...` | 디스코드 알림. 미설정 시 알림 없이 진행 |
+| `BATCH_SIZE` | `6` |  | `per_device_train_batch_size` |
+| `GRAD_ACCUM` | `2` |  | `gradient_accumulation_steps`. Total Batch = BATCH_SIZE × GRAD_ACCUM |
+| `LORA_R` | `16` | ✅ | LoRA rank |
+| `LORA_ALPHA` | `32` | ✅ | LoRA alpha. α=r 커플링 해제 (TML "LoRA Without Regret" 근거). 상세는 [HYPERPARAMETERS.md §5.3](HYPERPARAMETERS.md) |
+| `LORA_DROPOUT` | `0.05` |  | LoRA dropout. Sweep에서 제외하고 고정 — ALLoRA(2410.09692) 근거 |
+| `LEARNING_RATE` | `2e-4` | ✅ | 학습률. Sweep 범위 `log_uniform(1e-4, 5e-4)` |
+| `NUM_EPOCHS` | `3` |  | 학습 에폭 수. `MAX_STEPS > 0`이면 무시됨 |
+| `WARMUP_STEPS` | `150` |  | 워밍업 스텝 (총 step의 ~5%, 권장 5~10% 구간) |
+| `MAX_STEPS` | `-1` |  | step 수 직접 고정 (예: `MAX_STEPS=250`). `-1`이면 epoch 기반 |
 
-하이퍼파라미터도 환경변수로 오버라이드할 수 있습니다 (train.py 전용):
+### ③ 경로·캐시·실행 제어
 
-| 환경변수 | 기본값 | 설명 |
+| 환경변수 | 기본값 | 적용 스크립트 | 설명 |
+|---|---|---|---|
+| `DATA_DIR` | `data` | train.py, evaluate.py | 데이터셋 경로. 비어있으면 HF Hub에서 자동 다운로드. 이미 받아둔 경로 재사용 시 지정 (예: `DATA_DIR=/workspace/pest-data`) |
+| `DATASET_REPO` | `Himedia-AI-01/pest-detection-korean` | train.py | HF Hub dataset repo. 다른 데이터셋 재사용 시 변경 (클래스 수 동적) |
+| `FORCE_DOWNLOAD` | `0` | train.py | `1`이면 기존 `DATA_DIR`을 무시하고 HF Hub에서 재다운로드 |
+| `EVAL_SPLIT` | `val` | train.py, evaluate.py | 평가 split. `test.jsonl`이 있으면 `test`로 설정 가능 |
+| `RUN_NAME` | (하이퍼파라미터 기반 자동 생성) | train.py | OUTPUT_DIR / LORA_DIR / W&B run name. 예: `r16_a32_d0.05_lr0.0002_bs6x2_ep3_w150`. 같은 이름 재실행 시 체크포인트 이어받아 resume. **Sweep에선 수동 설정 금지** (20 run이 같은 이름으로 충돌) |
+| `HF_HOME` | `/workspace/hf_cache` (Linux) / 기본 `~/.cache/huggingface` (Windows) | train.py | HF cache 경로. ⚠️ torch/unsloth import **전에** 설정해야 반영됨 (train.py가 내부적으로 처리) |
+| `TRANSFORMERS_CACHE` | `/workspace/hf_cache` (Linux) / 미설정 (Windows) | train.py | Transformers cache 경로. 대개 `HF_HOME`과 같이 맞춤 |
+
+### ④ Sweep 자동 주입 (손대지 말 것)
+
+| 환경변수 | 주입자 | 설명 |
 |---|---|---|
-| `BATCH_SIZE` | `6` | per_device_train_batch_size |
-| `GRAD_ACCUM` | `2` | gradient_accumulation_steps (Total Batch = BATCH_SIZE × GRAD_ACCUM) |
-| `LORA_R` | `16` | LoRA rank |
-| `LORA_ALPHA` | `32` | LoRA alpha. α=r 커플링 대신 고정 기본값 (TML "LoRA Without Regret" 근거) |
-| `LORA_DROPOUT` | `0.05` | LoRA dropout. sweep에서 제외하고 고정 — ALLoRA(2410.09692) 근거로 short-run 분산 우려 |
-| `LEARNING_RATE` | `2e-4` | 학습률 |
-| `NUM_EPOCHS` | `3` | 학습 에폭 수 (`MAX_STEPS > 0`일 땐 무시됨) |
-| `WARMUP_STEPS` | `150` | 워밍업 스텝 (총 step의 ~5%, 권장 5~10% 구간) |
-| `MAX_STEPS` | `-1` | step 수 직접 고정 (예: `MAX_STEPS=250`). `-1`이면 epoch 기반 |
-| `DATA_DIR` | `data` | 데이터셋 경로. 비어있으면 HF Hub에서 자동 다운로드됨 |
-| `DATASET_REPO` | `Himedia-AI-01/pest-detection-korean` | HF Hub dataset repo |
-| `FORCE_DOWNLOAD` | `0` | `1`이면 기존 `DATA_DIR`을 무시하고 재다운로드 |
-| `EVAL_SPLIT` | `val` | 평가 split. 기본 `val` (`test` split이 없는 경우 대비) |
-
-코드 수정 없이 환경변수만으로 모든 설정이 가능합니다.
+| `LEARNING_RATE`, `LORA_R`, `LORA_ALPHA` | wandb agent | Bayes 샘플링 결과. Sweep 중 수동 export하면 agent 주입값과 충돌 |
+| `WANDB_SWEEP_ID` | wandb agent | Sweep run임을 표시하는 핵심 플래그. train.py가 이걸 감지하면 **Hub 업로드 자동 skip** (sweep 후 `upload_best.py`로 winner만 업로드) |
 
 ---
 
