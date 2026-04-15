@@ -197,6 +197,18 @@ DATA_DIR=/path/to/preexisting-data python train.py
 - 고정: `LORA_ALPHA = LORA_R` (자동), `WARMUP_STEPS=150` (~5%), `weight_decay=0.01`, `NUM_EPOCHS=3`, scheduler/batch 등
 - `WARMUP_STEPS`는 영향력이 작아 탐색 대상에서 제외. `LORA_DROPOUT`은 11,605샘플·11× 불균형 환경에서 일반화 성능에 기여.
 
+### Sweep 중 환경변수
+
+| 분류 | 변수 | 비고 |
+|---|---|---|
+| 🔴 **필수 (수동 설정)** | `HF_TOKEN`, `WANDB_API_KEY` | Pod 시작 후 export |
+| 🟡 선택 | `DISCORD_WEBHOOK_URL` | ⚠️ **20 run × 9단계 = 180개 알림** 폭탄. sweep 중엔 unset 권장 |
+| 🟡 선택 | `DATA_DIR`, `HF_ORG` | 기본값으로 충분 (`HF_ORG`는 sweep 중엔 업로드 skip이라 무시됨) |
+| 🟢 Agent 자동 주입 | `LEARNING_RATE`, `LORA_R`, `LORA_DROPOUT` | Bayes 샘플링 결과 주입 |
+| 🟢 Agent 자동 주입 | `WANDB_SWEEP_ID` | **핵심 플래그** — train.py가 이걸 감지해 Hub 업로드 skip |
+| ⚫ **설정 금지** | `LEARNING_RATE`/`LORA_R`/`LORA_DROPOUT` 수동 export | Agent 주입값과 충돌 |
+| ⚫ **설정 금지** | `RUN_NAME` | 고정하면 20 run이 같은 이름으로 충돌. 자동 timestamp 생성 유지 |
+
 ### 실행 절차
 
 **1. Sweep 발급 (한 번만, 어디서든)**
