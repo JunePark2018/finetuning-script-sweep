@@ -1,0 +1,37 @@
+# W&B Sweep config for pest-detection-korean (full dataset)
+#
+# 사용:
+#   wandb sweep --project pest-detection-full-sweep sweep.yaml
+#   wandb agent <ENTITY>/<PROJECT>/<SWEEP_ID>
+#
+# 자세한 가이드는 README.md의 "Sweep 실행하기" 섹션 참고.
+
+program: train.py
+
+method: bayes
+
+metric:
+  name: eval/macro_f1
+  goal: maximize
+
+parameters:
+  LEARNING_RATE:
+    distribution: log_uniform_values
+    min: 5.0e-5
+    max: 5.0e-4
+  LORA_R:
+    values: [8, 16, 32]
+  WARMUP_STEPS:
+    distribution: int_uniform
+    min: 30
+    max: 300
+
+# 총 20 run 후 sweep 자동 종료
+run_cap: 20
+
+# agent가 sample한 파라미터를 env로 주입한 뒤 train.py 실행
+# train.py는 os.environ.get(...)으로 이미 모든 파라미터를 읽음
+command:
+  - ${env}
+  - python
+  - ${program}
