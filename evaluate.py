@@ -59,12 +59,19 @@ def discord_embed(description):
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 EVAL_SPLIT = os.environ.get("EVAL_SPLIT", "val")
 
-SYSTEM_MSG = (
-    "당신은 작물 해충 식별 전문가입니다. "
-    '사진을 보고 해충의 이름만 한국어로 답하세요. '
-    '해충이 없으면 "정상"이라고만 답하세요. '
-    "부가 설명 없이 이름만 출력하세요."
-)
+
+def build_system_msg(class_names):
+    """train.py / inference.py와 동일한 구현 — 세 곳 모두 바이트 단위로 일치해야 함."""
+    class_list = ", ".join(class_names)
+    return (
+        "당신은 작물 해충 식별 전문가입니다. "
+        "사진 속 해충을 다음 목록에서 하나만 골라 그 단어 그대로 출력하세요:\n"
+        f"{class_list}\n\n"
+        "출력 규칙 (반드시 준수):\n"
+        "- 목록의 단어 하나만, 정확한 철자로\n"
+        "- 조사/수식어/구두점/설명/줄바꿈 전부 금지\n"
+        '- 해충이 없으면 "정상"'
+    )
 
 
 def load_class_names(model_path):
@@ -109,13 +116,13 @@ def load_eval_dataset(split):
     return samples
 
 
-def predict_single(model, tokenizer, image_path):
+def predict_single(model, tokenizer, image_path, system_msg):
     """단일 이미지에 대해 추론하여 예측 라벨 반환"""
     image = Image.open(image_path).convert("RGB")
 
     messages = [
         {"role": "system", "content": [
-            {"type": "text", "text": SYSTEM_MSG}
+            {"type": "text", "text": system_msg}
         ]},
         {"role": "user", "content": [
             {"type": "image"},
@@ -133,7 +140,7 @@ def predict_single(model, tokenizer, image_path):
 
     output = model.generate(
         **inputs,
-        max_new_tokens=20,
+        max_new_tokens=32,  # 긴 클래스명(예: 톱다리개미허리노린재)도 안 잘리게 여유
         use_cache=True,
         temperature=0.1,
     )
@@ -148,6 +155,7 @@ def predict_single(model, tokenizer, image_path):
 def evaluate(model_path):
     """평가 split 전체에 대해 평가 실행"""
     CLASS_NAMES = load_class_names(model_path)
+    SYSTEM_MSG = build_system_msg(CLASS_NAMES)
     print(f"클래스 ({len(CLASS_NAMES)}개): {CLASS_NAMES}")
 
     # 모델 로딩
@@ -176,22 +184,15 @@ def evaluate(model_path):
 
         for i, (img_path, label) in enumerate(samples):
             t_start = time.time()
-            pred = predict_single(model, tokenizer, img_path)
+            pred = predict_single(model, tokenizer, img_path, SYSTEM_MSG)
             t_elapsed = time.time() - t_start
             inference_times.append(t_elapsed)
 
-            matched = pred
-            if pred not in CLASS_NAMES:
-                for cls in CLASS_NAMES:
-                    if cls in pred:
-                        matched = cls
-                        break
-
             y_true.append(label)
-            y_pred.append(matched)
+            y_pred.append(pred)
 
-            status = "O" if label == matched else "X"
-            print(f"  [{i+1}/{len(samples)}] {status}  정답: {label:10s}  예측: {matched:10s}  ({t_elapsed:.2f}s)")
+            status = "O" if label == pred else "X"
+            print(f"  [{i+1}/{len(samples)}] {status}  정답: {label:10s}  예측: {pred:10s}  ({t_elapsed:.2f}s)")
     except Exception as e:
         notify_discord_json(discord_embed(f"❌ [2/3] 추론 중 에러 발생: {e}"))
         raise

@@ -11,27 +11,37 @@ import os
 from PIL import Image
 from unsloth import FastVisionModel
 
-SYSTEM_MSG = (
-    "당신은 작물 해충 식별 전문가입니다. "
-    '사진을 보고 해충의 이름만 한국어로 답하세요. '
-    '해충이 없으면 "정상"이라고만 답하세요. '
-    "부가 설명 없이 이름만 출력하세요."
-)
+
+def build_system_msg(class_names):
+    """train.py / evaluate.py와 동일한 구현 — 세 곳 모두 바이트 단위로 일치해야 함."""
+    class_list = ", ".join(class_names)
+    return (
+        "당신은 작물 해충 식별 전문가입니다. "
+        "사진 속 해충을 다음 목록에서 하나만 골라 그 단어 그대로 출력하세요:\n"
+        f"{class_list}\n\n"
+        "출력 규칙 (반드시 준수):\n"
+        "- 목록의 단어 하나만, 정확한 철자로\n"
+        "- 조사/수식어/구두점/설명/줄바꿈 전부 금지\n"
+        '- 해충이 없으면 "정상"'
+    )
 
 
 def load_class_names(model_path):
     path = os.path.join(model_path, "class_names.json")
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"class_names.json 없음 ({path}) — SYSTEM_MSG 생성에 필요. "
+            "학습 시 class_names.json이 저장됐는지 확인."
+        )
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def predict(image_path: str, model_path: str):
     """단일 이미지에 대해 해충 분류 추론"""
     class_names = load_class_names(model_path)
-    if class_names:
-        print(f"클래스 ({len(class_names)}개): {class_names}")
+    SYSTEM_MSG = build_system_msg(class_names)
+    print(f"클래스 ({len(class_names)}개): {class_names}")
 
     print(f"모델 로딩: {model_path}")
     model, tokenizer = FastVisionModel.from_pretrained(
@@ -62,7 +72,7 @@ def predict(image_path: str, model_path: str):
 
     output = model.generate(
         **inputs,
-        max_new_tokens=20,
+        max_new_tokens=32,  # 긴 클래스명(예: 톱다리개미허리노린재)도 안 잘리게 여유
         use_cache=True,
         temperature=0.1,
     )
