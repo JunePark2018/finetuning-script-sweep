@@ -60,6 +60,11 @@ DATA_DIR = os.environ.get("DATA_DIR", "data")
 EVAL_SPLIT = os.environ.get("EVAL_SPLIT", "val")
 
 
+# ⚠️ 학습/평가/추론 세 곳에서 바이트 단위로 동일해야 함.
+# 동일 문자열이 train.py, inference.py에도 리터럴로 박혀 있음.
+USER_PROMPT = "이 사진에 있는 해충의 이름을 알려주세요."
+
+
 def build_system_msg(class_names):
     """train.py / inference.py와 동일한 구현 — 세 곳 모두 바이트 단위로 일치해야 함."""
     class_list = ", ".join(class_names)
@@ -126,7 +131,7 @@ def predict_single(model, tokenizer, image_path, system_msg):
         ]},
         {"role": "user", "content": [
             {"type": "image"},
-            {"type": "text", "text": "이 사진에 있는 해충의 이름을 알려주세요."},
+            {"type": "text", "text": USER_PROMPT},
         ]},
     ]
 

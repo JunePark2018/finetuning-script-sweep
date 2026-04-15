@@ -82,7 +82,7 @@ bash setup.sh
 HF_TOKEN=hf_xxx python train.py
 ```
 
-첫 실행 시 `DATA_DIR/train.jsonl`이 없으면 HF Hub에서 데이터셋을 자동 다운로드합니다 (`DATA_DIR`이 비어있을 때만). 체크포인트가 있으면 자동으로 이어서 학습합니다.
+첫 실행 시 `DATA_DIR/train.jsonl`이 없으면 HF Hub에서 데이터셋을 자동 다운로드합니다 (`DATA_DIR`이 비어있을 때만). 체크포인트가 있으면 자동으로 이어서 학습합니다 (동일 하이퍼파라미터 → 동일 `RUN_NAME` → 동일 `OUTPUT_DIR` 재사용).
 
 ### 4. 평가
 
@@ -257,12 +257,6 @@ HF_TOKEN=hf_xxx python upload_best.py
 python upload_best.py --dry-run --top-k 10
 ```
 
-필요하면 `NUM_EPOCHS=5`로 늘려서 우승 파라미터 조합을 더 학습시켜 볼 수도 있음 (선택):
-```bash
-LEARNING_RATE=<best_lr> LORA_R=<best_r> LORA_DROPOUT=<best_dropout> \
-  NUM_EPOCHS=5 HF_TOKEN=hf_xxx python train.py
-```
-
 ### 주의사항
 
 - **단일 Pod 순차 실행 권장**: bayes는 "이전 결과 보고 다음 추천"이라 Pod 여러 개 동시 실행 시 random으로 퇴화
@@ -285,4 +279,4 @@ LEARNING_RATE=<best_lr> LORA_R=<best_r> LORA_DROPOUT=<best_dropout> \
 
 - 대시보드에서 `train/loss`, `eval/loss`, `learning_rate` 등을 실시간 확인
 - **Project**: 기본 `pest-detection-full`. `WANDB_PROJECT` 환경변수로 오버라이드 가능
-- **Run name**: `RUN_NAME` (예: `r16_a16_lr0.0002_bs6x2_ep3_w50`)
+- **Run name**: `RUN_NAME` (예: `r16_a16_d0.0_lr0.0002_bs6x2_ep3_w150`)
