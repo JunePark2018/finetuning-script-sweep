@@ -64,8 +64,11 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 6))
 GRAD_ACCUM = int(os.environ.get("GRAD_ACCUM", 2))
 
 LORA_R = int(os.environ.get("LORA_R", 16))
-LORA_ALPHA = int(os.environ.get("LORA_ALPHA", LORA_R))   # 미설정 시 r과 동일 (관행)
-LORA_DROPOUT = float(os.environ.get("LORA_DROPOUT", 0.0))
+# α=r 커플링 해제. TML "LoRA Without Regret"에 따라 α를 rank와 분리 고정하면
+# optimal LR이 rank에 독립적 → sweep 신호가 더 깨끗해짐.
+LORA_ALPHA = int(os.environ.get("LORA_ALPHA", 32))
+# Dropout은 3 epoch 학습 구간에서 분산만 키운다는 ALLoRA(2410.09692) 근거로 0.05 고정.
+LORA_DROPOUT = float(os.environ.get("LORA_DROPOUT", 0.05))
 
 LEARNING_RATE = float(os.environ.get("LEARNING_RATE", 2e-4))
 NUM_EPOCHS = int(os.environ.get("NUM_EPOCHS", 3))

@@ -4,28 +4,36 @@
 #   wandb sweep --project pest-detection-full-sweep sweep.yaml
 #   wandb agent <ENTITY>/<PROJECT>/<SWEEP_ID>
 #
-# 자세한 가이드는 README.md의 "Sweep 실행하기" 섹션 참고.
+# 자세한 가이드는 README.md의 "Sweep 실행하기" 섹션 + HYPERPARAMETERS.md 참고.
 
 program: train.py
 
 method: bayes
 
+# 서비스 목표(농부용 해충 판단 도구)에 맞춘 composite metric:
+#   pest_gated_f1 = binary_pest_recall × macro_f1_on_18_pest_classes
+# 첫 항은 "해충을 해충으로 잡는가"(치명적 FN 억제), 둘째 항은 "잡았다면 정확한 해충 ID인가".
+# 곱셈이라 둘 다 높아야 점수 나옴 → 실패 비용 비대칭을 sweep이 직접 최적화.
+# evaluate.py에서 계산·로깅. 단순 macro_f1은 기존대로 부가 지표로 함께 기록.
 metric:
-  name: eval/macro_f1
+  name: eval/pest_gated_f1
   goal: maximize
 
 parameters:
+  # Qwen3.5 VLM LoRA의 실용적 범위. 5e-5 이하는 FullFT 영역이라 제외.
   LEARNING_RATE:
     distribution: log_uniform_values
-    min: 5.0e-5
+    min: 1.0e-4
     max: 5.0e-4
   LORA_R:
     values: [8, 16, 32]
-  # WARMUP_STEPS는 macro_f1에 미치는 영향이 LR/r/dropout 대비 작고,
-  # 하단 30 step(총 step의 1%)이 부적절해 bayes 예산 낭비. train.py에서 150으로 고정.
-  # 대신 데이터 불균형(11×) + 11,605샘플 환경에서 효과 큰 DROPOUT을 탐색.
-  LORA_DROPOUT:
-    values: [0.0, 0.05, 0.1]
+  # LORA_ALPHA를 r과 분리해 별도 sweep. α=r 고정하면 γ=α/r이 항상 1이라
+  # rank 변화가 순수 capacity만 바꾸지만, LR-rank 상호작용이 sweep에 섞임.
+  # 고정 α로 두면 optimal LR이 rank에 독립적이라는 TML "LoRA Without Regret" 결론 참고.
+  # LORA_DROPOUT은 sweep에서 제외(train.py에서 0.05 고정) — 3 epoch 학습 구간에서
+  # dropout 신호가 LR·rank 대비 작고 분산만 키운다는 ALLoRA(arXiv 2410.09692) 근거.
+  LORA_ALPHA:
+    values: [16, 32, 64]
 
 # 총 20 run 후 sweep 자동 종료
 run_cap: 20

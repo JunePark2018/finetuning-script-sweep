@@ -259,6 +259,38 @@ def evaluate(model_path):
     print(f"    이미지당 평균: {avg_time:.2f}s")
     print(f"    처리량: {len(samples)/total_time:.1f} img/s")
 
+    # ════════════════════════════════════════
+    # 7. 서비스 지표 — Binary pest-vs-normal + Composite (sweep metric)
+    # ════════════════════════════════════════
+    # 서비스 실패 비용 비대칭:
+    #   - 해충 → 정상 FN : 치명적 (농부 무대응 → 피해 확산)
+    #   - 정상 → 해충 FP : 나쁨 (불필요 농약)
+    #   - 해충 X → 해충 Y: 수용 가능 (어쨌든 알림 전달)
+    # pest_gated_f1 = binary_pest_recall × macro_f1_on_18_pest_classes
+    # 곱셈이라 둘 다 높아야 점수 남 → sweep이 서비스 비대칭을 직접 최적화.
+    NORMAL_CLASS = "정상"
+    pest_classes = [c for c in CLASS_NAMES if c != NORMAL_CLASS]
+
+    tp_bin = sum(1 for t, p in zip(y_true, y_pred) if t != NORMAL_CLASS and p != NORMAL_CLASS)
+    fn_bin = sum(1 for t, p in zip(y_true, y_pred) if t != NORMAL_CLASS and p == NORMAL_CLASS)
+    fp_bin = sum(1 for t, p in zip(y_true, y_pred) if t == NORMAL_CLASS and p != NORMAL_CLASS)
+    tn_bin = sum(1 for t, p in zip(y_true, y_pred) if t == NORMAL_CLASS and p == NORMAL_CLASS)
+
+    bin_recall = tp_bin / (tp_bin + fn_bin) if (tp_bin + fn_bin) > 0 else 0.0
+    bin_precision = tp_bin / (tp_bin + fp_bin) if (tp_bin + fp_bin) > 0 else 0.0
+    bin_f2 = (5 * bin_precision * bin_recall / (4 * bin_precision + bin_recall)) if (bin_precision + bin_recall) > 0 else 0.0
+    normal_specificity = tn_bin / (tn_bin + fp_bin) if (tn_bin + fp_bin) > 0 else 0.0
+
+    f1_macro_pests = f1_score(y_true, y_pred, labels=pest_classes, average="macro", zero_division=0)
+    pest_gated_f1 = bin_recall * float(f1_macro_pests)
+
+    print(f"\n[7] 서비스 지표 (농부 관점):")
+    print(f"    해충→해충으로 잡은 비율 (binary_pest_recall):     {bin_recall:.4f}   [치명적 FN {fn_bin}건]")
+    print(f"    정상→정상으로 잡은 비율 (normal_specificity):      {normal_specificity:.4f}   [과경보 FP {fp_bin}건]")
+    print(f"    Binary F2  (recall 4× 가중, pest-vs-normal):    {bin_f2:.4f}")
+    print(f"    Macro F1   (18 해충만, 정상 제외):                 {float(f1_macro_pests):.4f}")
+    print(f"    ★ pest_gated_f1 (sweep 최적화 metric):           {pest_gated_f1:.4f}")
+
     # 오답 목록
     wrong = [(t, p, s[0]) for (s, t, p) in zip(samples, y_true, y_pred) if t != p]
     if wrong:
@@ -284,6 +316,18 @@ def evaluate(model_path):
         "recall_macro": round(float(rec_macro), 4),
         "f1": {cls: round(float(f), 4) for cls, f in zip(CLASS_NAMES, f1_per_class)},
         "f1_macro": round(float(f1_macro), 4),
+        "binary_pest_vs_normal": {
+            "true_pest_pred_pest_TP": tp_bin,
+            "true_pest_pred_normal_FN": fn_bin,      # ← 치명적 실패 (해충 놓침)
+            "true_normal_pred_pest_FP": fp_bin,      # ← 과경보 (불필요 농약)
+            "true_normal_pred_normal_TN": tn_bin,
+            "recall": round(bin_recall, 4),
+            "precision": round(bin_precision, 4),
+            "f2": round(bin_f2, 4),
+            "normal_specificity": round(normal_specificity, 4),
+        },
+        "f1_macro_pests_only": round(float(f1_macro_pests), 4),
+        "pest_gated_f1": round(pest_gated_f1, 4),
         "inference_speed": {
             "avg_seconds_per_image": round(avg_time, 2),
             "images_per_second": round(len(samples) / total_time, 1),
@@ -296,29 +340,42 @@ def evaluate(model_path):
         json.dump(eval_results, f, ensure_ascii=False, indent=2)
     print(f"\n평가 결과 저장: {eval_path}")
 
-    # W&B에 macro 메트릭 로깅 (sweep optimizer가 eval/macro_f1을 읽음)
+    # W&B에 메트릭 로깅. sweep optimizer는 eval/pest_gated_f1을 읽음 (sweep.yaml 참고).
     try:
         import wandb
         if wandb.run is not None:
             wandb.log({
+                # ★ Sweep 최적화 대상
+                "eval/pest_gated_f1": pest_gated_f1,
+                # Composite 분해 지표 (해석용)
+                "eval/binary_pest_recall": float(bin_recall),
+                "eval/binary_pest_precision": float(bin_precision),
+                "eval/binary_pest_f2": float(bin_f2),
+                "eval/normal_specificity": float(normal_specificity),
+                "eval/f1_macro_pests_only": float(f1_macro_pests),
+                # 기존 일반 지표
                 "eval/macro_f1": float(f1_macro),
                 "eval/macro_precision": float(prec_macro),
                 "eval/macro_recall": float(rec_macro),
                 "eval/accuracy": float(acc),
+                # 직접 카운트 (절대 숫자)
+                "eval/fn_pest_to_normal": fn_bin,
+                "eval/fp_normal_to_pest": fp_bin,
             })
-            print("W&B에 macro 메트릭 로깅 완료")
+            print("W&B 메트릭 로깅 완료")
     except Exception as e:
         print(f"W&B 로깅 실패 (무시): {e}")
 
-    # Discord 알림
+    # Discord 알림 — 서비스 지표 중심
     notify_discord_json(discord_embed(
         f"@everyone\n✅ [3/3] 평가 완료!\n\n"
+        f"★ pest_gated_f1 (sweep): {pest_gated_f1:.4f}\n"
+        f"해충 잡은 비율 (recall): {bin_recall:.4f}   [FN {fn_bin}건]\n"
+        f"정상 지킨 비율 (specificity): {normal_specificity:.4f}   [FP {fp_bin}건]\n"
+        f"Macro F1 (전체): {f1_macro:.4f}\n"
+        f"Macro F1 (해충만): {float(f1_macro_pests):.4f}\n"
         f"Accuracy: {acc:.4f} ({correct}/{len(y_true)})\n"
-        f"Precision (Macro): {prec_macro:.4f}\n"
-        f"Recall (Macro): {rec_macro:.4f}\n"
-        f"Macro F1: {f1_macro:.4f}\n"
-        f"추론 속도: {avg_time:.2f}s/img ({len(samples)/total_time:.1f} img/s)\n"
-        f"오답: {len(wrong)}건"
+        f"추론 속도: {avg_time:.2f}s/img ({len(samples)/total_time:.1f} img/s)"
     ))
 
     return eval_results, eval_path
