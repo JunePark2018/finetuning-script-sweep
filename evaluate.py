@@ -174,7 +174,7 @@ def evaluate(model_path):
         FastVisionModel.for_inference(model)
         notify_discord_json(discord_embed("✅ [1/3] 모델 로딩 완료!"))
     except Exception as e:
-        notify_discord_json(discord_embed(f"❌ [1/3] 모델 로딩 중 에러 발생: {e}"))
+        notify_discord_json(discord_embed(f"@everyone\n❌ [1/3] 모델 로딩 중 에러 발생: {e}"))
         raise
 
     # 데이터 로딩 + 추론
@@ -207,7 +207,7 @@ def evaluate(model_path):
             status = "O" if label == pred else "X"
             print(f"  [{i+1}/{len(samples)}] {status}  정답: {label:10s}  예측: {pred:10s}  ({t_elapsed:.2f}s)")
     except Exception as e:
-        notify_discord_json(discord_embed(f"❌ [2/3] 추론 중 에러 발생: {e}"))
+        notify_discord_json(discord_embed(f"@everyone\n❌ [2/3] 추론 중 에러 발생: {e}"))
         raise
 
     # ════════════════════════════════════════

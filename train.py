@@ -171,7 +171,7 @@ try:
         f"✅ [1/9] 데이터셋 준비 완료. ({len(CLASS_NAMES)}클래스)"
     ))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [1/9] 데이터셋 준비 실패: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [1/9] 데이터셋 준비 실패: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -343,7 +343,7 @@ try:
     print(f"  전처리 소요 시간: {time.time() - t0:.1f}s")
     notify_discord_json(discord_embed(f"✅ [2/9] 전처리 완료! (train {num_train}건, val {num_val}건)"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [2/9] 이미지 전처리 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [2/9] 이미지 전처리 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -375,7 +375,7 @@ try:
     print(f"  로딩 소요 시간: {time.time() - t0:.1f}s")
     notify_discord_json(discord_embed(f"✅ [3/9] 데이터 로딩 완료! (Train {len(train_dataset)}건, Val {len(val_dataset)}건)"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [3/9] 데이터 로딩 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [3/9] 데이터 로딩 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -412,7 +412,7 @@ try:
     print(f"  모델 로딩 소요 시간: {time.time() - t0:.1f}s")
     notify_discord_json(discord_embed("✅ [4/9] 모델 로딩 완료!"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [4/9] 모델 로딩 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [4/9] 모델 로딩 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -441,7 +441,7 @@ try:
     print(f"  학습 가능 파라미터: {trainable:,} / {total:,} ({trainable/total*100:.2f}%)")
     notify_discord_json(discord_embed("✅ [5/9] LoRA 설정 완료!"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [5/9] LoRA 설정 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [5/9] LoRA 설정 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -516,7 +516,7 @@ try:
         print(f"  Peak VRAM: {peak_gb:.2f} / {total_gb:.1f} GB ({peak_gb/total_gb*100:.0f}%)")
     notify_discord_json(discord_embed("✅ [6/9] 학습 완료!"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [6/9] 학습 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [6/9] 학습 중 에러 발생: {e}"))
     raise
 
 # Probe 모드: VRAM 측정만 하고 종료 (평가/저장/업로드 스킵)
@@ -543,7 +543,7 @@ try:
     print(f"  class_names.json ({len(CLASS_NAMES)}클래스) 저장됨")
     notify_discord_json(discord_embed(f"✅ [7/9] 모델 저장 완료! ({LORA_DIR}/, {len(CLASS_NAMES)}클래스)"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [7/9] 모델 저장 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [7/9] 모델 저장 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -566,7 +566,7 @@ try:
     print(f"  평가 결과 저장: {EVAL_JSON_PATH}")
     notify_discord_json(discord_embed("✅ [8/9] 평가 완료! evaluation_results.json 저장됨."))
 except Exception as e:
-    notify_discord_json(discord_embed(f"❌ [8/9] 평가 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"@everyone\n❌ [8/9] 평가 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
@@ -609,7 +609,7 @@ elif HF_TOKEN:
             f"파일 {len(uploaded_files)}개 (evaluation_results.json {'포함' if has_eval else '없음'})"
         ))
     except Exception as e:
-        notify_discord_json(discord_embed(f"❌ [9/9] Hub 업로드 중 에러 발생: {e}"))
+        notify_discord_json(discord_embed(f"@everyone\n❌ [9/9] Hub 업로드 중 에러 발생: {e}"))
         raise
 else:
     print("  HF_TOKEN 미설정 — 업로드 건너뜀")
