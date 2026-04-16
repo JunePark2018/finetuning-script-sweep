@@ -376,7 +376,7 @@ def evaluate(model_path):
 
     # Discord 알림 — 서비스 지표 중심
     notify_discord_json(discord_embed(
-        f"@everyone\n✅ [3/3] 평가 완료!\n\n"
+        f"✅ [3/3] 평가 완료!\n\n"
         f"★ pest_gated_f1 (sweep): {pest_gated_f1:.4f}\n"
         f"해충 잡은 비율 (recall): {bin_recall:.4f}   [FN {fn_bin}건]\n"
         f"정상 지킨 비율 (specificity): {normal_specificity:.4f}   [FP {fp_bin}건]\n"

@@ -287,7 +287,7 @@ python upload_best.py --dry-run --top-k 10
 
 ## Discord 알림
 
-`DISCORD_WEBHOOK_URL`이 설정되면, 각 단계의 시작/완료/에러를 디스코드 채널에 Embed 형식으로 전송합니다. 학습/추론/에러 단계에는 `@everyone` 멘션이 포함됩니다.
+`DISCORD_WEBHOOK_URL`이 설정되면, 각 단계의 시작/완료/에러를 디스코드 채널에 Embed 형식으로 전송합니다.
 
 | 스크립트 | 단계 | 내용 |
 |---|---|---|

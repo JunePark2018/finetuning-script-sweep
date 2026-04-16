@@ -450,7 +450,7 @@ except Exception as e:
 
 _train_len = f"{MAX_STEPS} steps" if MAX_STEPS > 0 else f"{NUM_EPOCHS} epochs"
 print(f"\n[6/9] 학습 시작 ({_train_len}, batch={BATCH_SIZE}×{GRAD_ACCUM}={BATCH_SIZE*GRAD_ACCUM}, lr={LEARNING_RATE})...")
-notify_discord_json(discord_embed(f"@everyone\n🚀 [6/9] 학습을 시작합니다! ({_train_len}, batch={BATCH_SIZE}×{GRAD_ACCUM}={BATCH_SIZE*GRAD_ACCUM})"))
+notify_discord_json(discord_embed(f"🚀 [6/9] 학습을 시작합니다! ({_train_len}, batch={BATCH_SIZE}×{GRAD_ACCUM}={BATCH_SIZE*GRAD_ACCUM})"))
 try:
     from unsloth.trainer import UnslothVisionDataCollator
     from trl import SFTTrainer, SFTConfig
@@ -514,9 +514,9 @@ try:
         peak_gb = torch.cuda.max_memory_allocated() / 1024**3
         total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
         print(f"  Peak VRAM: {peak_gb:.2f} / {total_gb:.1f} GB ({peak_gb/total_gb*100:.0f}%)")
-    notify_discord_json(discord_embed("@everyone\n✅ [6/9] 학습 완료!"))
+    notify_discord_json(discord_embed("✅ [6/9] 학습 완료!"))
 except Exception as e:
-    notify_discord_json(discord_embed(f"@everyone\n❌ [6/9] 학습 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"❌ [6/9] 학습 중 에러 발생: {e}"))
     raise
 
 # Probe 모드: VRAM 측정만 하고 종료 (평가/저장/업로드 스킵)
@@ -552,7 +552,7 @@ except Exception as e:
 
 EVAL_SPLIT = os.environ.get("EVAL_SPLIT", "val")
 print(f"\n[8/9] 평가 (split={EVAL_SPLIT})...")
-notify_discord_json(discord_embed(f"@everyone\n🔍 [8/9] 학습된 모델을 {EVAL_SPLIT} 데이터셋으로 평가합니다."))
+notify_discord_json(discord_embed(f"🔍 [8/9] 학습된 모델을 {EVAL_SPLIT} 데이터셋으로 평가합니다."))
 EVAL_JSON_PATH = None
 try:
     # 학습 후 GPU 메모리 정리 (LoRA 리로드 전)
@@ -564,9 +564,9 @@ try:
     from evaluate import evaluate as run_evaluation
     _, EVAL_JSON_PATH = run_evaluation(LORA_DIR)
     print(f"  평가 결과 저장: {EVAL_JSON_PATH}")
-    notify_discord_json(discord_embed("@everyone\n✅ [8/9] 평가 완료! evaluation_results.json 저장됨."))
+    notify_discord_json(discord_embed("✅ [8/9] 평가 완료! evaluation_results.json 저장됨."))
 except Exception as e:
-    notify_discord_json(discord_embed(f"@everyone\n❌ [8/9] 평가 중 에러 발생: {e}"))
+    notify_discord_json(discord_embed(f"❌ [8/9] 평가 중 에러 발생: {e}"))
     raise
 
 # ════════════════════════════════════════
