@@ -181,6 +181,14 @@ def evaluate(model_path):
     notify_discord_json(discord_embed(f"📊 [2/3] {EVAL_SPLIT} 데이터 추론을 시작합니다."))
     try:
         samples = load_eval_dataset(EVAL_SPLIT)
+        # Smoke test용: EVAL_LIMIT=N으로 N개만 평가. seed 고정 random sample이라
+        # 클래스 한쪽으로 쏠리지 않고 [8] 코드 path 전체를 빠르게 검증.
+        eval_limit = int(os.environ.get("EVAL_LIMIT", 0))
+        if eval_limit > 0 and eval_limit < len(samples):
+            import random as _r
+            _r.Random(42).shuffle(samples)
+            samples = samples[:eval_limit]
+            print(f"  EVAL_LIMIT={eval_limit} — {len(samples)}건만 평가 (smoke test 모드)")
         print(f"평가 샘플 ({EVAL_SPLIT}): {len(samples)}건\n")
 
         y_true = []

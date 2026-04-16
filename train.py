@@ -167,6 +167,11 @@ except Exception as e:
 print("\n[2/9] 이미지 전처리...")
 notify_discord_json(discord_embed("🖼️ [2/9] 이미지 전처리를 시작합니다. (크롭 → 디스크 저장)"))
 try:
+    # 캐시가 비어 있는 첫 실행에서 50/25/25 분기를 결정적으로 만들기 위한 seed.
+    # 캐시가 있으면 분기 자체가 일어나지 않아 무관하지만, 새 Pod에서 캐시를 새로 생성할 때
+    # 바이트 단위 재현성이 필요한 경우를 위해 명시.
+    random.seed(42)
+
     # ⚠️ 학습/평가/추론 세 곳에서 바이트 단위로 동일해야 함.
     # 동일 문자열이 evaluate.py, inference.py에도 리터럴로 박혀 있음.
     USER_PROMPT = "이 사진에 있는 해충의 이름을 알려주세요."
@@ -206,11 +211,15 @@ try:
         json_path = os.path.join(DATA_DIR, split, class_name, img_filename + ".json")
         if not os.path.exists(json_path):
             return None
-        with open(json_path, encoding="utf-8") as f:
-            data = json.load(f)
-        for obj in data["annotations"]["object"]:
-            if obj["grow"] == BBOX_GROW_STAGE and obj.get("points"):
-                return obj["points"][0]
+        try:
+            with open(json_path, encoding="utf-8") as f:
+                data = json.load(f)
+            for obj in data["annotations"]["object"]:
+                if obj["grow"] == BBOX_GROW_STAGE and obj.get("points"):
+                    return obj["points"][0]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # 빈 파일, 손상된 JSON, 예상과 다른 구조 → bbox 없이 원본 사용
+            pass
         return None
 
 
@@ -462,7 +471,9 @@ try:
             remove_unused_columns=False,
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
-            max_seq_length=2048,
+            # max_seq_length은 SFTConfig 경로에선 무시됨 (skip_prepare_dataset=True가 TRL tokenization을 우회).
+            # 실제로 enforce하려면 UnslothVisionDataCollator(model, tokenizer, max_seq_length=N)로 명시 전달해야 함.
+            # 현재는 model 자연 ctx로 흘러감 → VRAM 여유 있는 동안 의도적 미설정.
             # Windows는 fork 미지원 → multiprocessing DataLoader가 spawn으로 뜨면서 에러.
             # RunPod(Linux)에선 8 유지, Windows 로컬에선 0으로 폴백.
             dataloader_num_workers=0 if os.name == "nt" else 8,
@@ -483,10 +494,20 @@ try:
     trainer.train(resume_from_checkpoint=resume)
     train_time = time.time() - t0
     print(f"  학습 소요 시간: {train_time/60:.1f}분")
+    if torch.cuda.is_available():
+        peak_gb = torch.cuda.max_memory_allocated() / 1024**3
+        total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        print(f"  Peak VRAM: {peak_gb:.2f} / {total_gb:.1f} GB ({peak_gb/total_gb*100:.0f}%)")
     notify_discord_json(discord_embed("@everyone\n✅ [6/9] 학습 완료!"))
 except Exception as e:
     notify_discord_json(discord_embed(f"@everyone\n❌ [6/9] 학습 중 에러 발생: {e}"))
     raise
+
+# Probe 모드: VRAM 측정만 하고 종료 (평가/저장/업로드 스킵)
+if os.environ.get("SKIP_EVAL") == "1":
+    print("\nSKIP_EVAL=1 — probe 모드, 평가/저장/업로드 건너뛰고 종료")
+    import sys
+    sys.exit(0)
 
 # ════════════════════════════════════════
 # 7. 모델 저장
