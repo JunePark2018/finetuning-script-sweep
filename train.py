@@ -471,14 +471,13 @@ try:
             max_steps=MAX_STEPS,  # -1 (기본): epoch 사용 / > 0: epoch 무시하고 step 수 직접 제어
             learning_rate=LEARNING_RATE,
             bf16=True,
-            logging_steps=10,
+            logging_steps=5,  # train/loss·lr·grad_norm 로깅. 10→5로 조여서 불안정성 탐지 쉽게 (free).
             save_strategy="epoch",
             save_total_limit=1,  # 최신 1개만 유지 — sweep 20 run × 9B 체크포인트로 디스크 폭발 방지
-            # Trainer 내장 eval: 기본 "no"로 비활성화 (Phase 3 결정).
-            # 이유: sweep winner 선정은 [8/9] evaluate.py의 pest_gated_f1만 사용.
-            # 내장 eval은 epoch당 val 1595건 forward pass (run당 ~16분 낭비)라 sweep엔 과함.
-            # eval_loss 수렴 곡선 관찰하고 싶으면 TRAINER_EVAL=epoch 로 오버라이드.
-            eval_strategy=os.environ.get("TRAINER_EVAL", "no"),
+            # Trainer 내장 eval: epoch당 1회 eval_loss 계산. overfitting/수렴 진단에 필수.
+            # 비용은 epoch당 ~16분이지만 진단 가치가 시간 절약보다 큼.
+            # 꺼야 할 때만 TRAINER_EVAL=no 로 오버라이드 (예: 초고속 반복 개발 시).
+            eval_strategy=os.environ.get("TRAINER_EVAL", "epoch"),
             optim="adamw_8bit",
             weight_decay=0.01,  # Unsloth 권장 0.01~0.1 (기존 0.001은 10배 낮았음)
             lr_scheduler_type="cosine",
