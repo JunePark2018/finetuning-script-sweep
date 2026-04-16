@@ -474,9 +474,11 @@ try:
             logging_steps=10,
             save_strategy="epoch",
             save_total_limit=1,  # 최신 1개만 유지 — sweep 20 run × 9B 체크포인트로 디스크 폭발 방지
-            # Smoke test 모드(EVAL_LIMIT set)에선 Trainer 내장 eval 스킵 — val 전체 1595건 돌려서 ~16분 낭비 방지.
-            # 실전 sweep에선 epoch당 eval_loss 찍어야 수렴 곡선 관찰 가능하므로 "epoch" 유지.
-            eval_strategy="no" if os.environ.get("EVAL_LIMIT") else "epoch",
+            # Trainer 내장 eval: 기본 "no"로 비활성화 (Phase 3 결정).
+            # 이유: sweep winner 선정은 [8/9] evaluate.py의 pest_gated_f1만 사용.
+            # 내장 eval은 epoch당 val 1595건 forward pass (run당 ~16분 낭비)라 sweep엔 과함.
+            # eval_loss 수렴 곡선 관찰하고 싶으면 TRAINER_EVAL=epoch 로 오버라이드.
+            eval_strategy=os.environ.get("TRAINER_EVAL", "no"),
             optim="adamw_8bit",
             weight_decay=0.01,  # Unsloth 권장 0.01~0.1 (기존 0.001은 10배 낮았음)
             lr_scheduler_type="cosine",
