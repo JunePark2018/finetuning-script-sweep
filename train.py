@@ -9,10 +9,24 @@
 import json
 import os
 import random
+import sys
 import time
 import requests
 
 from PIL import Image
+
+# ════════════════════════════════════════
+# W&B Sweep: CLI args (--KEY=VAL) → env var
+# ════════════════════════════════════════
+# wandb agent는 sampling한 HP를 `python train.py --LEARNING_RATE=X --LORA_R=Y ...`
+# 형태로 전달함. train.py는 argparse를 안 쓰고 os.environ.get으로 읽으므로,
+# 여기서 CLI args를 env로 복사해서 이하 모든 os.environ.get이 sampling 결과를 보도록 함.
+# 수동 실행(CLI args 없음) 시엔 루프가 비어서 아무 영향 없음.
+for _arg in sys.argv[1:]:
+    if _arg.startswith("--") and "=" in _arg:
+        _k, _, _v = _arg[2:].partition("=")
+        os.environ[_k] = _v
+        print(f"  [sweep] {_k}={_v}")
 
 # ════════════════════════════════════════
 # Discord Webhook 설정

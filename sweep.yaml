@@ -38,9 +38,11 @@ parameters:
 # 총 20 run 후 sweep 자동 종료
 run_cap: 20
 
-# agent가 sample한 파라미터를 env로 주입한 뒤 train.py 실행
-# train.py는 os.environ.get(...)으로 이미 모든 파라미터를 읽음
+# agent가 sample한 파라미터를 CLI args로 전달 (--LEARNING_RATE=X --LORA_R=Y ...).
+# train.py 상단의 argv 루프가 이걸 os.environ로 복사해서 이후 모든 os.environ.get이 받음.
+# ${env}만으론 WANDB_* 같은 내부 env만 주입되고 sample된 HP는 전달 안 됨 — 반드시 ${args} 필요.
 command:
   - ${env}
   - python
   - ${program}
+  - ${args}
