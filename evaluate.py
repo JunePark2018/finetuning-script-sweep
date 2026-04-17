@@ -315,6 +315,19 @@ def evaluate(model_path):
     print(f"    Macro F1   (18 해충만, 정상 제외):                 {float(f1_macro_pests):.4f}")
     print(f"    ★ pest_gated_f1 (sweep 최적화 metric):           {pest_gated_f1:.4f}")
 
+    # 서비스 건전성 경고 — 해충 클래스 중 F1 < 0.5인 것은 배포 차단 사유.
+    # 전체 macro_f1이 높아도 특정 해충 몇 종을 못 잡으면 서비스 부적합 (농부가 해당
+    # 해충 사진 올렸을 때 잘못된 대응 유도). winner 선정 시 이 경고 반드시 확인.
+    pest_low_f1 = [(cls, float(f)) for cls, f in zip(CLASS_NAMES, f1_per_class)
+                   if cls != NORMAL_CLASS and float(f) < 0.5]
+    if pest_low_f1:
+        warn_lines = "\n".join(f"  • {cls}: F1={f:.3f}" for cls, f in pest_low_f1)
+        print(f"\n⚠️  서비스 건전성 경고 — 해충 {len(pest_low_f1)}개 클래스 F1 < 0.5:")
+        print(warn_lines)
+        notify_discord_json(discord_embed(
+            f"⚠️ [진단] 해충 {len(pest_low_f1)}개 클래스 F1<0.5 (서비스 부적합 가능):\n{warn_lines}"
+        ))
+
     # 오답 목록
     wrong = [(t, p, s[0]) for (s, t, p) in zip(samples, y_true, y_pred) if t != p]
     if wrong:
@@ -368,7 +381,7 @@ def evaluate(model_path):
     try:
         import wandb
         if wandb.run is not None:
-            wandb.log({
+            log_dict = {
                 # ★ Sweep 최적화 대상
                 "eval/pest_gated_f1": pest_gated_f1,
                 # Composite 분해 지표 (해석용)
@@ -385,7 +398,12 @@ def evaluate(model_path):
                 # 직접 카운트 (절대 숫자)
                 "eval/fn_pest_to_normal": fn_bin,
                 "eval/fp_normal_to_pest": fp_bin,
-            })
+            }
+            # Per-class F1 — wandb UI에서 슬라이스 분석 가능하도록 클래스별 로깅.
+            # 해충 1~2종만 못 잡는 winner를 식별할 때 결정적 (전체 macro는 가려줌).
+            for cls, f in zip(CLASS_NAMES, f1_per_class):
+                log_dict[f"eval/f1_per_class/{cls}"] = float(f)
+            wandb.log(log_dict)
             print("W&B 메트릭 로깅 완료")
     except Exception as e:
         print(f"W&B 로깅 실패 (무시): {e}")
