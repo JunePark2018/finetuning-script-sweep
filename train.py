@@ -176,6 +176,28 @@ try:
     print(f"  test.jsonl  {'✓' if os.path.exists(os.path.join(DATA_DIR, 'test.jsonl')) else '✗'}")
     print(f"  클래스 수: {len(CLASS_NAMES)}")
     print(f"  클래스 목록: {CLASS_NAMES}")
+
+    # 자동 val/test split — test.jsonl 미존재 시 이 단계에서 생성.
+    # sweep이 val로 HP 선택하면 winner val 점수는 낙관적 편향이므로 편향 없는 최종
+    # 수치를 위해 held-out test 분리 필수. 사용자가 `python split_val_test.py` 수동 실행
+    # 번거로워 자동화. `AUTO_TEST_SPLIT=0` env로 비활성화 가능 (test 필요 없는 실험 모드).
+    val_path = os.path.join(DATA_DIR, "val.jsonl")
+    test_path = os.path.join(DATA_DIR, "test.jsonl")
+    if (
+        os.environ.get("AUTO_TEST_SPLIT", "1") == "1"
+        and os.path.exists(val_path)
+        and not os.path.exists(test_path)
+    ):
+        print(f"\n  test.jsonl 없음 → val.jsonl 자동 분할 실행 (AUTO_TEST_SPLIT=0으로 비활성)")
+        from split_val_test import split_val_test
+        _split_result = split_val_test(
+            data_dir=DATA_DIR, test_ratio=0.2, seed=42, verbose=False,
+        )
+        print(
+            f"  ✓ val {_split_result['val_count']}건 / test {_split_result['test_count']}건 "
+            f"생성 (seed=42, ratio=0.2, val_original.jsonl에 원본 백업)"
+        )
+
     notify_discord_json(discord_embed(
         f"✅ [1/9] 데이터셋 준비 완료. ({len(CLASS_NAMES)}클래스)"
     ))
