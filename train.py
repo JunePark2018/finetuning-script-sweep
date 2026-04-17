@@ -487,6 +487,10 @@ try:
             eval_strategy=os.environ.get("TRAINER_EVAL", "epoch"),
             optim="adamw_8bit",
             weight_decay=0.01,  # Unsloth 권장 0.01~0.1 (기존 0.001은 10배 낮았음)
+            # LoRA 불안정 방어: γ(=α/r)가 높은 조합 + vision tower 학습 상황에서
+            # 초기 grad가 폭주하면 모델이 mode collapse로 도망가는 현상 2026-04-16 sweep에서
+            # 확인. clip=1.0이 표준 보수값, 학습 신호는 유지하면서 폭주만 차단.
+            max_grad_norm=1.0,
             lr_scheduler_type="cosine",
             seed=42,
             output_dir=OUTPUT_DIR,
