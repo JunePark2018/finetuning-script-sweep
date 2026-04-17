@@ -123,6 +123,13 @@ print("=" * 60)
 # W&B project 기본값 (환경변수 미설정 시) — 모든 sweep run이 한 project에 모여 비교 가능
 os.environ.setdefault("WANDB_PROJECT", "pest-detection-full")
 
+# Sweep agent가 실패/미완료 run의 WANDB_RUN_ID를 subprocess env에 재주입해서
+# 새 run이 기존 run을 덮어쓰는 현상 방지 (2026-04-17 sweep 898t9zce에서 확인:
+# 두 subprocess의 local dir 이름이 동일한 ID 접미사 `-lflair09`로 생성됨).
+# 매 subprocess가 독립된 wandb run ID로 init되도록 강제.
+os.environ.pop("WANDB_RUN_ID", None)
+os.environ["WANDB_RESUME"] = "never"
+
 DATASET_REPO = os.environ.get("DATASET_REPO", "Himedia-AI-01/pest-detection-korean")
 FORCE_DOWNLOAD = os.environ.get("FORCE_DOWNLOAD", "0") == "1"
 
