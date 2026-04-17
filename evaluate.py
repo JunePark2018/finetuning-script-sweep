@@ -210,6 +210,22 @@ def evaluate(model_path):
         notify_discord_json(discord_embed(f"@everyone\n❌ [2/3] 추론 중 에러 발생: {e}"))
         raise
 
+    # Mode collapse 조기 진단 — 전체 예측이 3개 미만 클래스로 수렴했으면 학습 실패.
+    # 2026-04-16 sweep에서 γ=8 조합이 15h 돌고도 단일 클래스만 뱉는 붕괴 사례 확인.
+    # metric은 계속 계산·로깅해서 sweep optimizer가 이 영역을 피하도록 정보 제공.
+    unique_preds = set(y_pred)
+    if len(unique_preds) < 3:
+        collapse_msg = (
+            f"Mode collapse 감지: {len(y_pred)}건 중 {len(unique_preds)}개 클래스만 예측됨 "
+            f"({sorted(unique_preds)})"
+        )
+        print(f"\n⚠️  {collapse_msg}")
+        notify_discord_json(discord_embed(
+            f"@everyone\n⚠️ [3/3] {collapse_msg}\n"
+            f"학습 실패 판정 — HP 조합 부적절 가능성 (γ 과도, LR 과도 등). "
+            f"sweep 중이면 낮은 metric 기록되어 Bayes가 자동 기피."
+        ))
+
     # ════════════════════════════════════════
     # 6개 평가 메트릭
     # ════════════════════════════════════════
