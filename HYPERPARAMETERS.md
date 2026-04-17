@@ -9,11 +9,11 @@
 ## 1. TL;DR
 
 - **서비스 목표:** 농부가 작물 사진을 올려 "해충 있냐?"를 묻는 시나리오. **"해충 → 정상" 오분류(FN)가 "정상 → 해충" 오분류(FP)보다 훨씬 치명적** (피해 확산 vs 불필요한 농약).
-- **탐색 대상 3개 (3D Bayes):** `LEARNING_RATE` (log 1e-4~5e-4), `LORA_R` ({8,16,32}), `LORA_ALPHA` ({16,32,64})
-- **고정값:** `LORA_DROPOUT=0.05`, `WARMUP_STEPS=150` (~5%), `weight_decay=0.01`, `NUM_EPOCHS=3`, `BATCH_SIZE=6×2=12`
+- **탐색 대상 3개 (3D Bayes):** `LEARNING_RATE` (log 1e-4~5e-4), `LORA_R` ({8,16,32}), `LORA_ALPHA` ({16,32})
+- **고정값:** `LORA_DROPOUT=0.05`, `WARMUP_STEPS=150` (~5%), `weight_decay=0.01`, `NUM_EPOCHS=3`, `BATCH_SIZE=6×2=12`, `max_grad_norm=1.0`
 - **Primary metric:** `eval/pest_gated_f1 = binary_pest_recall × macro_f1_on_18_pest_classes` — 서비스 비용 비대칭을 sweep이 직접 최적화. 곱셈이라 "해충 잡기" AND "해충 ID 정확도" 둘 다 높아야 점수 남.
-- **Secondary logged metrics:** `binary_pest_recall`, `binary_pest_f2`, `normal_specificity`, `macro_f1` (전체), `macro_f1_on_pests` (해충만), confusion matrix의 FN/FP 절대 카운트.
-- **Run budget:** 20 run × ~6.5h ≈ 130h
+- **Secondary logged metrics:** `binary_pest_recall`, `binary_pest_f2`, `normal_specificity`, `macro_f1` (전체), `macro_f1_on_pests` (해충만), per-class F1 (`eval/f1_per_class/<class>`), confusion matrix의 FN/FP 절대 카운트.
+- **Run budget:** 20 run × ~12h ≈ **240h (10일)** — 실측 기준 (Qwen3.5-9B + A6000 + unsloth 2× 가속).
 - **설계 원칙:** 2025-2026 VLM LoRA 연구(TML "LoRA Without Regret", ALLoRA, Unsloth guide) + 데이터셋 특성(4.6× 불균형, 11,605 샘플) + 서비스 실패 비용 비대칭성의 교집합.
 
 ---
@@ -98,25 +98,32 @@
 
 ---
 
-### 5.3 `LORA_ALPHA` — {16, 32, 64}  *(신규 차원 — α=r 커플링 해제)*
+### 5.3 `LORA_ALPHA` — {16, 32}  *(α=r 커플링 해제, γ ≤ 4 안전역)*
 
 **근거:**
 - Thinking Machines Lab ("LoRA Without Regret", 2025): α를 rank와 분리해 **고정**하면 optimal LR이 rank에 독립적. α=r로 묶으면 γ=α/r이 항상 1이라 겉보기엔 깔끔하지만, 실제론 LR-rank 상호작용이 sweep 신호에 섞임.
-- α를 별도 sweep 차원으로 두면 γ=α/r scaling factor가 {0.5, 1, 2, 4, 8} 스펙트럼으로 탐색됨:
-  - r=8, α=64: γ=8 (강한 업데이트, 적은 capacity)
-  - r=32, α=16: γ=0.5 (약한 업데이트, 많은 capacity)
-  - r=16, α=32: γ=2 (Unsloth α=2r 관행)
+- α를 별도 sweep 차원으로 두면 γ=α/r scaling factor가 **{0.5, 1, 2, 4}** 스펙트럼으로 탐색됨:
+  - r=8, α=32: γ=4 (상한, capacity 작고 업데이트 강함)
+  - r=8, α=16: γ=2 (Unsloth α=2r 관행)
+  - r=16, α=32: γ=2 (표준)
+  - r=32, α=16: γ=0.5 (하한, capacity 크고 업데이트 약함)
 - 이전 DROPOUT 차원을 α로 교체 — 3 epoch 학습에서 dropout 신호는 LR·rank 대비 작고 분산만 키운다는 ALLoRA(arXiv 2410.09692) 근거로 sweep 대상 제외.
 
 **대안 검토:**
+- `{16, 32, 64}` (초기 설계): γ=8 포함(r=8 × α=64). 2026-04-16 첫 sweep에서 이 조합이 **mode collapse 유발**(15h 학습 후 단일 클래스만 예측, eval accuracy ~5% = 1/19 랜덤 수준) → 64 제거.
 - `{32}` 단일 고정: sweep 차원 -1로 2D 탐색. 20 run에 bayes가 과수렴 위험.
 - `{8, 16, 32, 64, 128}` 5값: 3×5=15 grid → bayes가 run당 1.3개 할당, 신호 약화.
 - α=r 복원: LR-rank 혼입 문제 그대로.
 
-**확신도:** ★★★
+**확신도:** ★★★★ (γ=8 실측 실패 근거 추가되면서 상향)
 
-**한계:**
-- α=64 with r=32는 γ=2로 전형적 Unsloth 권장값이지만, α=64 with r=8는 γ=8로 실험적 영역. Winner가 극단값이면 다음 sweep에서 범위 재조정 필요.
+**제거 사유 상세 (γ=8, 2026-04-16 사례):**
+- `LORA_R=8, LORA_ALPHA=64, LEARNING_RATE=2.26e-4` 조합 실행
+- γ=8이 vision tower LoRA gradient를 8× 증폭 → 유효 LR ≈ 1.8e-3 (full FT 상한의 ~30배)
+- 초기 수십 step에서 vision feature가 garbage로 짓눌림 → 모델이 "이미지 신호 무시, class prior만 예측" 전략으로 도망 → mode collapse
+- train/loss 2.5 → 0 수백 step 만에 붕괴, eval은 단일 pest class 99% 예측
+- 실측값이 "γ=8은 실험적 영역" 한계 주석을 초과해 실패 쪽으로 안착 → 탐색 공간에서 완전 제외 결정
+- 방어책으로 `max_grad_norm=1.0` 추가 (§6.6), `evaluate.py`에 mode collapse 탐지기 추가.
 
 ---
 
@@ -185,6 +192,18 @@
 | `bf16` | `True` | **Qwen3.5는 bf16 필수, 4-bit 양자화 비권장** |
 | `max_seq_length` | 2048 | 이미지 토큰 + 짧은 텍스트에 여유 |
 
+### 6.6 `max_grad_norm = 1.0`  *(안전장치, 2026-04-17 추가)*
+
+**근거:**
+- γ(=α/r) 높은 조합 + `finetune_vision_layers=True` 상태에서 초기 몇 step의 gradient가 폭주하면 모델이 수습 불가 지점까지 밀려나 mode collapse로 도망. 2026-04-16 sweep에서 γ=8 조합이 실제로 이 경로를 탐 (§5.3 참고).
+- `max_grad_norm=1.0`은 Transformer 학습의 표준 보수값. 학습 신호는 유지하면서 폭주 구간만 차단.
+- 이 sweep의 γ 상한이 4로 축소되어 폭주 확률은 이미 감소했지만, future HP 탐색 확장 또는 LR 상향 시를 대비한 이중 방어막.
+
+**한계:**
+- clip이 너무 강하면(예: 0.1) 학습 자체를 억제해 underfit. 1.0은 "정상 gradient는 거의 건드리지 않고 outlier spike만 제어"하는 실용 하한.
+
+**확신도:** ★★★★ (실증 문제에 대한 직접 대응, 표준 보수값)
+
 ---
 
 ## 7. Sweep Method
@@ -201,10 +220,12 @@
 
 **근거:**
 - 3D bayes는 보통 10~15 run으로 수렴, 20은 **refinement 여유 포함**
-- `LORA_R` 3 카테고리 × `LORA_ALPHA` 3 카테고리 = 9 grid point → 각 조합 평균 2+ run 확보
-- 시간: 20 × 6.5h ≈ **130h** (5.4일). Pod 비용 허용 시 표준 선택.
+- `LORA_R` 3 카테고리 × `LORA_ALPHA` 2 카테고리 = **6 grid point** → 각 조합 평균 3+ run 확보
+- 시간: 20 × 12h ≈ **240h (10일)** — 실측 기준 (Qwen3.5-9B + A6000 + unsloth 2× 가속).
 
-**대안:** 15 run (3.4일), 12 run (3.3일). 본 설정은 품질 우선.
+**대안:** 15 run (7.5일), 12 run (6일). 본 설정은 품질 우선.
+
+**참고:** 초기 설계문에는 "6.5h/run × 20 = 130h"로 추정했으나, 실제 첫 run이 15h 이상 걸렸음(grad checkpointing·vision layer 학습 오버헤드 실측). 보수적으로 12h/run으로 재산정.
 
 ---
 
@@ -213,7 +234,7 @@
 1. **본 구성은 Qwen3.5-9B + 한국어 해충 분류에 대한 직접 벤치마크가 아님.** 일반 best practice + 태스크 특성의 교집합.
 2. **클래스 불균형(4.6×)은 완만한 편.** 설계 초기엔 11×로 추정했으나 실측 4.6×. IJCV 2024 "Exploring VLMs for Imbalanced Learning"에 따르면 pretrained VLM은 mild imbalance에선 logit-adjustment가 focal/CB loss보다 효과 큼 → §9에 반영.
 3. **WARMUP_STEPS 고정은 LR과의 상호작용 탐색 불가.** 최적 LR이 5e-4 근처이면 warmup 재조정 재실험 필요.
-4. **α 범위 `{16, 32, 64}` 가 최적 커버리지인지 미검증.** Winner가 극단값(α=16 with r=32, γ=0.5 또는 α=64 with r=8, γ=8)이면 범위 밖에 더 좋은 점 있을 가능성.
+4. **α 범위 `{16, 32}` 가 최적 커버리지인지 미검증.** γ=8 극단(α=64)은 2026-04-16 실측에서 붕괴 확인되어 제거. γ=0.5 극단(α=16 with r=32)은 탐색에 포함됨. Winner가 이 하단 극단으로 기울면 α 범위를 {8, 16, 32}로 확장해서 γ={0.25, 0.5, 1, 2}까지 탐색할 여지.
 5. **Sweep은 winner 1개만 산출.** 여러 seed에서의 분산은 측정 안 됨 — sweep 후 best 조합으로 seed 3~5개 재학습해야 성능 안정성 확인 가능.
 6. **Composite metric `pest_gated_f1`은 곱셈 형태라 한 요소가 0이면 전체 0.** 실전에선 `binary_pest_recall`이 매우 낮은 run을 완전히 제외하는 효과 → 의도된 설계. 단, winner 간 차이가 미세할 때 단순 `macro_f1` 대비 노이즈가 더 클 수 있음.
 7. **DoRA·LoRA+·rsLoRA 등 vanilla LoRA 대안 미탐색.** Unsloth 2026 default가 DoRA이지만 α 커플링 해제를 우선. §9 A/B로 별도 검증.
@@ -228,8 +249,20 @@
 `upload_best.py` 실행 **전에** 반드시 수행:
 
 - W&B에서 top-5 run의 **`binary_pest_recall`과 `normal_specificity`를 나란히** 확인. `pest_gated_f1` 1등 run이라도 이 두 값의 균형이 극단적이면 재고.
-- `evaluation_results.json`의 `binary_pest_vs_normal` 섹션에서 **FN 절대 개수** (`true_pest_pred_normal_FN`) 확인. 예: val 1,595건 중 해충 샘플이 1,494건인데 FN이 100건 넘으면 서비스 부적합.
+- `evaluation_results.json`의 `binary_pest_vs_normal` 섹션에서 **FN 절대 개수** (`true_pest_pred_normal_FN`) 확인. 예: val 1,276건 중 해충 샘플이 대부분인데 FN이 100건 넘으면 서비스 부적합.
 - Confusion matrix에서 **"정상" column이 비정상적으로 진한 행**이 있는지 체크 → 특정 pest 클래스가 정상으로 새고 있는지.
+- **Per-class F1 슬라이스 확인** (`eval/f1_per_class/<class>`): 전체 macro가 0.85여도 특정 해충 1\~2종에서 F1<0.5면 서비스 부적합. `evaluate.py`가 학습 직후 이 경고를 자동으로 Discord·콘솔에 띄우므로 놓칠 가능성 낮음.
+- **Mode collapse 자동 경고** (신규 안전장치, 2026-04-17): evaluate.py가 예측 클래스 다양성 < 3이면 `@everyone` 경고. sweep 중에는 metric 0 근처로 기록되어 Bayes가 자동 기피.
+
+### 9.0.1 Held-out test로 편향 없는 최종 수치
+
+Sweep winner 확정 후 `upload_best.py` 전에:
+
+```bash
+EVAL_SPLIT=test python evaluate.py --model pest-lora-<winner-run-name>
+```
+
+Sweep이 val로 HP 선택하면 winner의 val 점수는 낙관적 편향 (val 자체가 간접 학습 신호). `split_val_test.py`로 미리 분리한 held-out test 319건으로 평가한 수치가 발표·보고용.
 
 ### 9.1 Winner 확정 후 A/B 우선순위
 
