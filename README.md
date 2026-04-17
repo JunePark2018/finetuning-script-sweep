@@ -198,6 +198,35 @@ HF_TOKEN=hf_xxx BATCH_SIZE=4 LORA_R=8 LEARNING_RATE=1e-4 python train.py
 DATA_DIR=/path/to/preexisting-data python train.py
 ```
 
+## Smoke Test (Sweep 시작 전 필수)
+
+20 run × 6.5h = **130시간**짜리 sweep 돌리기 전에, 한 조합으로 짧게 돌려 파이프라인·HP 조합이 건강한지 5\~10분 안에 확인하는 단계. mode collapse·grad 폭주 같은 문제를 여기서 catch하면 며칠 낭비 방지.
+
+```bash
+# 첫 실행: 모델 다운로드 포함 15~20분, 이후: 5~10분
+WANDB_MODE=disabled \
+MAX_STEPS=50 \
+EVAL_LIMIT=30 \
+RUN_NAME=smoke-test \
+LORA_R=16 LORA_ALPHA=32 LEARNING_RATE=2e-4 \
+python train.py
+```
+
+### 합격 기준
+
+| 구간 | 체크 항목 | 정상 | 불합격 → 조치 |
+|---|---|---|---|
+| [6/9] | train/loss 추이 | 50 step 내 2.5 → 0.5\~1.5 완만 감소 | 10 step 내 0.1 이하 급락 → **mode collapse**, HP 조정 후 재시도 |
+| [6/9] | grad_norm | 전반 < 10 유지 | 50+ 스파이크 지속 → LR 낮추거나 γ 축소 |
+| [8/9] | 예측 로그 다양성 | 여러 클래스 섞여 출력 | 같은 클래스만 반복 → **mode collapse** 확정 |
+| [8/9] | pest_gated_f1 | ≥ 0.05 (랜덤 대비 유의미) | ~0.01 → 파이프라인 버그 의심 |
+| 전반 | 9단계 완료 | 무사 종료 | 에러 시 로그 확인 |
+| 전반 | VRAM Peak | < 총 용량 95% | OOM → BATCH_SIZE 낮춤 |
+
+**하나라도 불합격이면 본 sweep으로 넘어가지 말 것.** HP·코드 수정 후 다시 smoke.
+
+evaluate.py가 예측 다양성 3 미만이면 자동으로 Discord에 `@everyone` 경고 + 콘솔 출력 — sweep 중에도 즉시 알아차림.
+
 ## Sweep 실행하기 (W&B Sweeps)
 
 하이퍼파라미터 bayes 탐색을 위한 [`sweep.yaml`](sweep.yaml) 설정 포함. `LEARNING_RATE` × `LORA_R` × `LORA_ALPHA` 3차원 공간에서 서비스 composite metric `eval/pest_gated_f1`을 최대화합니다.
@@ -208,7 +237,7 @@ DATA_DIR=/path/to/preexisting-data python train.py
 |---|---|
 | `LEARNING_RATE` | log_uniform 1e-4 ~ 5e-4 |
 | `LORA_R` | {8, 16, 32} |
-| `LORA_ALPHA` | {16, 32, 64} |
+| `LORA_ALPHA` | {16, 32} (γ=α/r 상한 4 — γ=8에서 VLM mode collapse 확인되어 64 제거) |
 
 - 방법: `method: bayes` (sequential, 단일 Pod 권장)
 - 총 run: 20 (`run_cap: 20`)
