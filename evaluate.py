@@ -21,6 +21,8 @@ from sklearn.metrics import (
     confusion_matrix,
 )
 
+from prompts import USER_PROMPT, build_system_msg  # train/evaluate/inference 공유 프롬프트
+
 
 DISCORD_BOT = {
     "username": "RunPod",
@@ -58,25 +60,6 @@ def discord_embed(description):
 
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 EVAL_SPLIT = os.environ.get("EVAL_SPLIT", "val")
-
-
-# ⚠️ 학습/평가/추론 세 곳에서 바이트 단위로 동일해야 함.
-# 동일 문자열이 train.py, inference.py에도 리터럴로 박혀 있음.
-USER_PROMPT = "이 사진에 있는 해충의 이름을 알려주세요."
-
-
-def build_system_msg(class_names):
-    """train.py / inference.py와 동일한 구현 — 세 곳 모두 바이트 단위로 일치해야 함."""
-    class_list = ", ".join(class_names)
-    return (
-        "당신은 작물 해충 식별 전문가입니다. "
-        "사진 속 해충을 다음 목록에서 하나만 골라 그 단어 그대로 출력하세요:\n"
-        f"{class_list}\n\n"
-        "출력 규칙 (반드시 준수):\n"
-        "- 목록의 단어 하나만, 정확한 철자로\n"
-        "- 조사/수식어/구두점/설명/줄바꿈 전부 금지\n"
-        '- 해충이 없으면 "정상"'
-    )
 
 
 def load_class_names(model_path):

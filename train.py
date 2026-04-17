@@ -15,6 +15,8 @@ import requests
 
 from PIL import Image
 
+from prompts import USER_PROMPT, build_system_msg  # train/evaluate/inference 공유 프롬프트
+
 # ════════════════════════════════════════
 # W&B Sweep: CLI args (--KEY=VAL) → env var
 # ════════════════════════════════════════
@@ -193,24 +195,8 @@ try:
     # 바이트 단위 재현성이 필요한 경우를 위해 명시.
     random.seed(42)
 
-    # ⚠️ 학습/평가/추론 세 곳에서 바이트 단위로 동일해야 함.
-    # 동일 문자열이 evaluate.py, inference.py에도 리터럴로 박혀 있음.
-    USER_PROMPT = "이 사진에 있는 해충의 이름을 알려주세요."
-
-    # SYSTEM_MSG는 CLASS_NAMES에서 동적 생성 — 학습/평가/추론 세 곳이 바이트 단위로 동일해야 함.
-    # 동일한 build_system_msg 함수가 evaluate.py, inference.py에도 복제돼 있음.
-    def build_system_msg(class_names):
-        class_list = ", ".join(class_names)
-        return (
-            "당신은 작물 해충 식별 전문가입니다. "
-            "사진 속 해충을 다음 목록에서 하나만 골라 그 단어 그대로 출력하세요:\n"
-            f"{class_list}\n\n"
-            "출력 규칙 (반드시 준수):\n"
-            "- 목록의 단어 하나만, 정확한 철자로\n"
-            "- 조사/수식어/구두점/설명/줄바꿈 전부 금지\n"
-            '- 해충이 없으면 "정상"'
-        )
-
+    # SYSTEM_MSG는 CLASS_NAMES에서 동적 생성. USER_PROMPT/build_system_msg는 prompts 모듈에서
+    # 공유 import하므로 세 파일(train/evaluate/inference)이 자동으로 바이트 단위 동일.
     SYSTEM_MSG = build_system_msg(CLASS_NAMES)
 
     BBOX_GROW_STAGE = 33
