@@ -389,6 +389,13 @@ try:
     import torch
     from unsloth import FastVisionModel
 
+    # 재현성 보완: HF Trainer의 seed=42는 trainer.train() 시점에만 적용됨.
+    # 모델 초기화·collator shuffle 등 Trainer 이전 단계를 포함한 전역 torch 시드를
+    # 여기서 명시 고정 (random.seed(42)는 [2/9], [3/9]에서 이미 호출됨).
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
+
     print(f"  HF_HOME = {os.environ.get('HF_HOME', '(default ~/.cache/huggingface)')}")
     print(f"  CUDA 사용 가능: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
